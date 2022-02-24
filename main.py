@@ -1,6 +1,6 @@
 from pingserver.server import Server
-from database import db_manager
+from database.db_manager import DBManager
 
 if __name__ == "__main__":
-    db_manager.instance
+    DBManager()
     Server().start()

@@ -33,7 +33,7 @@ class Server():
         while True:
             if len(self.add_to_db) > 0:
                 for c in range(len(self.add_to_db)):
-                    db_manager.instance.add_address(self.add_to_db.pop(0))
+                    db_manager.INSTANCE.add_address(self.add_to_db.pop(0))
 
             c = 0
             while c < len(self.active_addresses):
