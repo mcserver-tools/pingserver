@@ -14,10 +14,8 @@ server_inst = None
 
 class Server():
     def __init__(self) -> None:
-        self.next_address = "1.1.0.0"
-        self.redo_addresses = []
         self.active_addresses = []
-        self.addr_getter_lock = Lock()
+        self._lock = Lock()
 
         self.add_to_db = []
 
@@ -39,7 +37,9 @@ class Server():
             while c < len(self.active_addresses):
                 if (datetime.now() - self.active_addresses[c][1]) > timedelta(days=0, hours=0, minutes=1, seconds=0, milliseconds=0):
                     print(f"{bcolors.WARNING}Timeout for client {self.active_addresses[c][0]}!{bcolors.ENDC}")
-                    self.active_addresses.pop(c)
+                    with self._lock:
+                        with open("pingserver/address_cache.txt", "a") as f:
+                            f.write("\n" + self.active_addresses.pop(c)[0])
                     c -= 1
                 c += 1
             sleep(1)
@@ -47,9 +47,7 @@ class Server():
     def _start_socketserver(self):
         server = TCPServer(("192.168.0.154", 20005), TCPSocketHandler)
         print("Starting server...")
-        t = Thread(target=server.serve_forever)
-        t.daemon = True
-        t.start()
+        Thread(target=server.serve_forever, daemon=True).start()
 
     def keepalive(self, address):
         for c, item in enumerate(self.active_addresses):
@@ -59,15 +57,27 @@ class Server():
         return False
 
     def _get_address(self):
-        last_address = open("pingserver/address_cache.txt", "r+").readline()
-        if last_address == None or last_address == "":
-            last_address = "1.1.0.0"
+        with self._lock:
+            with open("pingserver/address_cache.txt", "r+") as f:
+                lines = f.readlines()
 
-        new_address = self._increase_address(last_address)
+        if len(lines) == 1 and len(lines[0].split(".")) == 4:
+            last_address = lines[0]
+            lines = [self._increase_address(lines[0])]
+        elif len(lines) > 1 and len(lines[-1].split(".")) == 4:
+            print(lines)
+            last_address = lines.pop()
+            lines[-1] = lines[-1].split("\n")[0]
+            print(lines)
+        else:
+            last_address = "1.1.0.0"
+            lines = [self._increase_address("1.1.0.0")]
 
         self.active_addresses.append((last_address, datetime.now()))
-        with open("pingserver/address_cache.txt", "w+") as f:
-            f.write(new_address)
+
+        with self._lock:
+            with open("pingserver/address_cache.txt", "w+") as f:
+                f.writelines(lines)
 
         return last_address
 
