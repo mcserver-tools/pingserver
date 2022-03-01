@@ -1,6 +1,9 @@
-from pingserver.server import Server
+"""Main module of the pingserver"""
+
 from database.db_manager import DBManager
+
+from pingserver import server
 
 if __name__ == "__main__":
     DBManager()
-    Server().start()
+    server.INSTANCE.start()
