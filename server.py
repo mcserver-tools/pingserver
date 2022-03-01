@@ -80,10 +80,8 @@ class Server():
             last_address = lines[0]
             lines = [self._increase_address(lines[0])]
         elif len(lines) > 1 and len(lines[-1].split(".")) == 4:
-            print(lines)
             last_address = lines.pop()
             lines[-1] = lines[-1].split("\n")[0]
-            print(lines)
         else:
             last_address = "1.1.0.0"
             lines = [self._increase_address("1.1.0.0")]
