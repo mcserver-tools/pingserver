@@ -8,8 +8,8 @@ from socketserver import TCPServer
 from threading import Lock, Thread
 from time import sleep
 
-from database import db_manager
-from pingserver.bcolors import BColors
+import db_manager
+from bcolors import BColors
 
 os.system('color')
 
