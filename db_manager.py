@@ -1,24 +1,20 @@
 """Module for managing the database"""
 
 import sqlalchemy
+import sqlalchemy.ext.declarative
 from sqlalchemy.orm import scoped_session, sessionmaker
-
-from model import Address, Base
-
-INSTANCE = None
 
 class DBManager():
     """Class that manages the database"""
 
     def __init__(self):
-        if INSTANCE is None:
-            db_connection = sqlalchemy.create_engine("sqlite:///pingserver/addresses.db",
-                                                     connect_args={'check_same_thread': False})
-            Base.metadata.create_all(db_connection)
+        db_connection = sqlalchemy.create_engine("sqlite:///pingserver/addresses.db",
+                                                    connect_args={'check_same_thread': False})
+        Base.metadata.create_all(db_connection)
 
-            session_factory = sessionmaker(db_connection, autoflush=False)
-            _session = scoped_session(session_factory)
-            self.session = _session()
+        session_factory = sessionmaker(db_connection, autoflush=False)
+        _session = scoped_session(session_factory)
+        self.session = _session()
 
     def add_address(self, address):
         """Add address to database"""
@@ -45,4 +41,15 @@ class DBManager():
 
         return [item.address for item in self.session.query(Address).all()]
 
-INSTANCE = DBManager()
+"""Declaring data models"""
+
+Base = sqlalchemy.ext.declarative.declarative_base()
+
+# pylint: disable=R0903
+
+class Address(Base):
+    """Address representation."""
+
+    __tablename__ = "address"
+    address_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    address = sqlalchemy.Column(sqlalchemy.String, unique=True)

@@ -8,7 +8,7 @@ from socketserver import TCPServer
 from threading import Lock, Thread
 from time import sleep
 
-import db_manager
+from db_manager import DBManager
 from bcolors import BColors
 
 os.system('color')
@@ -37,7 +37,7 @@ class Server():
         while True:
             if len(self.add_to_db) > 0:
                 for _ in range(len(self.add_to_db)):
-                    db_manager.INSTANCE.add_address(self.add_to_db.pop(0))
+                    DBManager().add_address(self.add_to_db.pop(0))
 
             counter = 0
             while counter < len(self.active_addresses):
@@ -193,7 +193,7 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
     def receive_text(self) -> str:
         """Receive string from the given socket"""
 
-        return self._bytes_to_string(self.request.recv(4096))
+        return self._bytes_to_string(self.request.recv(16384))
 
     @staticmethod
     def _string_to_bytes(input_text):
