@@ -12,7 +12,8 @@ from time import sleep
 from db_manager import DBManager
 from bcolors import BColors
 
-os.system('color')
+if os.name == "nt":
+    os.system('color')
 
 INSTANCE = None
 
