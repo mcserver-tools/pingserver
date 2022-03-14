@@ -3,6 +3,7 @@
 import os
 import socketserver
 import json
+from pathlib import Path
 from datetime import datetime, timedelta
 from socketserver import TCPServer
 from threading import Lock, Thread
@@ -73,6 +74,10 @@ class Server():
         """Get an address from the file"""
 
         with self._lock:
+            Path("pingserver").mkdir(parents=True, exist_ok=True)
+            if not Path("pingserver/address_cache.txt").is_file():
+                with open("pingserver/address_cache.txt", "w") as f:
+                    f.write("1.1.0.0")
             with open("pingserver/address_cache.txt", "r+", encoding="utf8") as file:
                 lines = file.readlines()
 
