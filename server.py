@@ -20,12 +20,17 @@ INSTANCE = None
 class Server():
     """Class containing all methods concerning the pingserver"""
 
-    def __init__(self) -> None:
+    def __init__(self, address="192.168.0.154") -> None:
+        global INSTANCE
         if not INSTANCE:
+            self._address = (address, 20005)
+
             self.active_addresses = []
             self._lock = Lock()
 
             self.add_to_db = []
+
+            INSTANCE = self
 
     def start(self):
         """Start the server"""
@@ -54,11 +59,10 @@ class Server():
                 counter += 1
             sleep(1)
 
-    @staticmethod
-    def _start_socketserver():
+    def _start_socketserver(self):
         """Start the socketserver"""
 
-        server = TCPServer(("192.168.0.154", 20005), TCPSocketHandler)
+        server = TCPServer(self._address, TCPSocketHandler)
         print("Starting server...")
         Thread(target=server.serve_forever, daemon=True).start()
 
@@ -212,5 +216,3 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
         """Convert bytes object to string"""
 
         return input_bytes.decode()
-
-INSTANCE = Server()
