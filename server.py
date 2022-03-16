@@ -15,14 +15,11 @@ from bcolors import BColors
 if os.name == "nt":
     os.system('color')
 
-INSTANCE = None
-
 class Server():
     """Class containing all methods concerning the pingserver"""
 
     def __init__(self, address="192.168.0.154") -> None:
-        global INSTANCE
-        if not INSTANCE:
+        if not Server.INSTANCE:
             self._address = (address, 20005)
 
             self.active_addresses = []
@@ -30,7 +27,9 @@ class Server():
 
             self.add_to_db = []
 
-            INSTANCE = self
+            Server.INSTANCE = self
+
+    INSTANCE = None
 
     def start(self):
         """Start the server"""
@@ -81,8 +80,8 @@ class Server():
         with self._lock:
             Path("pingserver").mkdir(parents=True, exist_ok=True)
             if not Path("pingserver/address_cache.txt").is_file():
-                with open("pingserver/address_cache.txt", "w") as f:
-                    f.write("1.1.0.0")
+                with open("pingserver/address_cache.txt", "w", encoding="utf8") as file:
+                    file.write("1.1.0.0")
             with open("pingserver/address_cache.txt", "r+", encoding="utf8") as file:
                 lines = file.readlines()
 
@@ -124,7 +123,7 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
         text = self.receive_text()
         if text.startswith("KEEPALIVE"):
             address = text.split(" ", maxsplit=1)[1]
-            if INSTANCE.keepalive(address):
+            if Server.INSTANCE.keepalive(address):
                 self.send_text("200 OK")
                 return
             self.errored(text, error_msg="404 UNKNOWN ADDRESS")
@@ -142,7 +141,7 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
             if text.startswith("GET"):
                 split_text = text.split(" ", maxsplit=1)[1]
                 if split_text.startswith("address"):
-                    address = INSTANCE.get_address()
+                    address = Server.INSTANCE.get_address()
                     self.send_text(address)
                 else:
                     self.errored(text)
@@ -176,9 +175,9 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
             client_address, addresses = split_text.split(" ", maxsplit=1)
 
             found = False
-            for index, item in enumerate(INSTANCE.active_addresses):
+            for index, item in enumerate(Server.INSTANCE.active_addresses):
                 if item[0] == client_address:
-                    popped_item = INSTANCE.active_addresses.pop(index)
+                    popped_item = Server.INSTANCE.active_addresses.pop(index)
                     found = True
             if not found:
                 return False
@@ -186,10 +185,10 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
                 addresses = addresses.replace("'", '"')
                 address_list = json.loads(addresses)
             except json.decoder.JSONDecodeError:
-                INSTANCE.active_addresses.append(popped_item)
+                Server.INSTANCE.active_addresses.append(popped_item)
                 return False
 
-            INSTANCE.add_to_db += address_list
+            Server.INSTANCE.add_to_db += address_list
 
             self.send_text("200 OK")
             return True
