@@ -202,7 +202,7 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
     def receive_text(self) -> str:
         """Receive string from the given socket"""
 
-        return self._bytes_to_string(self.request.recv(16384))
+        return self._bytes_to_string(self.request.recv(65536))
 
     @staticmethod
     def _string_to_bytes(input_text):
