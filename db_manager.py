@@ -4,8 +4,6 @@ import sqlalchemy
 import sqlalchemy.ext.declarative
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-# pylint: disable=R0801
-
 class DBManager():
     """Class that manages the database"""
 

@@ -22,7 +22,10 @@ class Server():
         if not Server.INSTANCE:
             self._address = (address, 20005)
 
-            self.active_addresses = []
+            # timedelta after which an address is considered timed out
+            self._timeout = timedelta(days=0,hours=0, minutes=1, seconds=0, milliseconds=0)
+
+            self.active_addresses: list[tuple[str, datetime]] = []
             self._lock = Lock()
 
             self.add_to_db = []
@@ -37,26 +40,49 @@ class Server():
         self._start_socketserver()
         self._write_to_db()
 
-    def _write_to_db(self):
-        """Write working addresses to database"""
+    def get_address(self):
+        """Get the next address from the cache file"""
 
-        while True:
-            if len(self.add_to_db) > 0:
-                for _ in range(len(self.add_to_db)):
-                    DBManager().add_address(self.add_to_db.pop(0))
+        # create the cache file if it doesn't exist
+        with self._lock:
+            if not Path("pingserver/address_cache.txt").is_file():
+                with open("pingserver/address_cache.txt", "w", encoding="utf8") as file:
+                    file.write("1.1.0.0")
 
-            counter = 0
-            while counter < len(self.active_addresses):
-                if (datetime.now() - self.active_addresses[counter][1]) > \
-                    timedelta(days=0,hours=0, minutes=1, seconds=0, milliseconds=0):
-                    print(f"{BColors.WARNING}Timeout for client " +
-                          f"{self.active_addresses[counter][0]}!{BColors.ENDC}")
-                    with self._lock:
-                        with open("pingserver/address_cache.txt", "a", encoding="utf8") as file:
-                            file.write("\n" + self.active_addresses.pop(counter)[0])
-                    counter -= 1
-                counter += 1
-            sleep(1)
+        with self._lock:
+            with open("pingserver/address_cache.txt", "r+", encoding="utf8") as file:
+                lines = file.readlines()
+
+        # if only one address is in the file, take it and increment the saved address
+        if len(lines) == 1 and len(lines[0].split(".")) == 4:
+            last_address = lines[0]
+            lines = [self._increase_address(lines[0])]
+        # if more than one address is in the file, pop the last address
+        elif len(lines) > 1 and len(lines[-1].split(".")) == 4:
+            last_address = lines.pop()
+            lines[-1] = lines[-1].split("\n")[0]
+        # if the cache file is corrupted, use the first address
+        else:
+            last_address = "1.1.0.0"
+            lines = [self._increase_address("1.1.0.0")]
+
+        self.active_addresses.append((last_address, datetime.now()))
+
+        # save the new address list
+        with self._lock:
+            with open("pingserver/address_cache.txt", "w+", encoding="utf8") as file:
+                file.writelines(lines)
+
+        return last_address
+
+    def keepalive(self, address):
+        """Refreshes the keepalive timer"""
+
+        for index, item in enumerate(self.active_addresses):
+            if item[0] == address:
+                self.active_addresses[index] = (item[0], datetime.now())
+                return True
+        return False
 
     def _start_socketserver(self):
         """Start the socketserver"""
@@ -65,43 +91,29 @@ class Server():
         print("Starting server...")
         Thread(target=server.serve_forever, daemon=True).start()
 
-    def keepalive(self, address):
-        """Refresh keepalive timer"""
+    def _write_to_db(self):
+        """Add working addresses to database"""
 
-        for index, item in enumerate(self.active_addresses):
-            if item[0] == address:
-                self.active_addresses[index] = (item[0], datetime.now())
-                return True
-        return False
+        while True:
+            if len(self.add_to_db) > 0:
+                for _ in range(len(self.add_to_db)):
+                    DBManager().add_address(self.add_to_db.pop())
+            self._check_timeouts()
 
-    def get_address(self):
-        """Get an address from the file"""
+    def _check_timeouts(self):
+        """Checks if an address has timed out"""
 
-        with self._lock:
-            Path("pingserver").mkdir(parents=True, exist_ok=True)
-            if not Path("pingserver/address_cache.txt").is_file():
-                with open("pingserver/address_cache.txt", "w", encoding="utf8") as file:
-                    file.write("1.1.0.0")
-            with open("pingserver/address_cache.txt", "r+", encoding="utf8") as file:
-                lines = file.readlines()
-
-        if len(lines) == 1 and len(lines[0].split(".")) == 4:
-            last_address = lines[0]
-            lines = [self._increase_address(lines[0])]
-        elif len(lines) > 1 and len(lines[-1].split(".")) == 4:
-            last_address = lines.pop()
-            lines[-1] = lines[-1].split("\n")[0]
-        else:
-            last_address = "1.1.0.0"
-            lines = [self._increase_address("1.1.0.0")]
-
-        self.active_addresses.append((last_address, datetime.now()))
-
-        with self._lock:
-            with open("pingserver/address_cache.txt", "w+", encoding="utf8") as file:
-                file.writelines(lines)
-
-        return last_address
+        counter = 0
+        while counter < len(self.active_addresses):
+            if (datetime.now() - self.active_addresses[counter][1]) > self._timeout:
+                print(f"{BColors.WARNING}Timeout for client " +
+                        f"{self.active_addresses[counter][0]}!{BColors.ENDC}")
+                with self._lock:
+                    with open("pingserver/address_cache.txt", "a", encoding="utf8") as file:
+                        file.write("\n" + self.active_addresses.pop(counter)[0])
+                counter -= 1
+            counter += 1
+        sleep(1)
 
     @staticmethod
     def _increase_address(last_address):
@@ -118,51 +130,61 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
     """Class handling incoming Tcp requests"""
 
     def handle(self) -> None:
-        """Handle a received request"""
+        """Handle a request"""
 
         text = self.receive_text()
+
+        # send back OK
+        if text.startswith("PING"):
+            self.send_text("OK")
+            return
+
+        # refresh the keepalive timer
         if text.startswith("KEEPALIVE"):
             address = text.split(" ", maxsplit=1)[1]
             if Server.INSTANCE.keepalive(address):
-                self.send_text("200 OK")
+                self.send_text("OK")
                 return
-            self.errored(text, error_msg="404 UNKNOWN ADDRESS")
+            self.errored(text, error_msg="ERROR:UNKNOWN ADDRESS")
             return
-        if text.startswith("PING"):
-            self.send_text("200 OK")
-        elif text.startswith("POST"):
+
+        # save the received working addresses to the database
+        if text.startswith("PUT"):
             print(text.rsplit(" [", maxsplit=1)[0] + " [...]", end="\r")
             if not self._receive_addresses(text):
-                self.errored(text, error_msg="404 LIST CONVERTION FAILED")
+                self.errored(text, error_msg="ERROR:LIST CONVERTION FAILED")
                 return
-        else:
+        # send back a new address
+        elif text.startswith("GET"):
             print(text, end="\r")
-
-            if text.startswith("GET"):
-                split_text = text.split(" ", maxsplit=1)[1]
-                if split_text.startswith("address"):
-                    address = Server.INSTANCE.get_address()
-                    self.send_text(address)
-                else:
-                    self.errored(text)
-                    return
+            split_text = text.split(" ", maxsplit=1)[1]
+            if split_text.startswith("address"):
+                address = Server.INSTANCE.get_address()
+                self.send_text(address)
             else:
                 self.errored(text)
                 return
-
-        if not text.startswith("POST"):
-            print(f"> {BColors.OKGREEN}{text}{BColors.ENDC}")
+        # handle unknown requests
         else:
-            print(f"> {BColors.OKGREEN}{text.rsplit(' [', maxsplit=1)[0]} [...]{BColors.ENDC}")
+            self.errored(text)
+            return
+
+        # replace the sent addresses with [...]
+        if text.startswith("PUT"):
+            text = f"{text.rsplit(' [', maxsplit=1)[0]} [...]"
+
+        print(f"> {BColors.OKGREEN}{text}{BColors.ENDC}")
         print("Request handled successfully.")
 
-    def errored(self, text, error_msg = "404 Unknown REQUEST"):
-        """Method that handles an request handling error"""
+    def errored(self, text, error_msg = "ERROR:Unknown REQUEST"):
+        """Handle errored requests"""
 
-        if not text.startswith("POST"):
-            print(f"> {BColors.FAIL}{text}{BColors.ENDC}")
-        else:
-            print(f"> {BColors.FAIL}{text.rsplit(' [', maxsplit=1)[0]} [...]{BColors.ENDC}")
+        # replace the sent addresses with [...]
+        if text.startswith("PUT"):
+            text = f"{text.rsplit(' [', maxsplit=1)[0]} [...]"
+
+        print(f"> {BColors.FAIL}{text}{BColors.ENDC}")
+
         print(error_msg)
         self.send_text(error_msg)
 
@@ -170,29 +192,34 @@ class TCPSocketHandler(socketserver.BaseRequestHandler):
         """Handle received working addresses"""
 
         split_text = text.split(" ", maxsplit=1)[1]
-        if split_text.startswith("address"):
-            split_text = split_text.split(" ", maxsplit=1)[1]
-            client_address, addresses = split_text.split(" ", maxsplit=1)
+        # return if the put request is unknown
+        if not split_text.startswith("address"):
+            return False
 
-            found = False
-            for index, item in enumerate(Server.INSTANCE.active_addresses):
-                if item[0] == client_address:
-                    popped_item = Server.INSTANCE.active_addresses.pop(index)
-                    found = True
-            if not found:
-                return False
-            try:
-                addresses = addresses.replace("'", '"')
-                address_list = json.loads(addresses)
-            except json.decoder.JSONDecodeError:
-                Server.INSTANCE.active_addresses.append(popped_item)
-                return False
+        split_text = split_text.split(" ", maxsplit=1)[1]
+        client_address, addresses = split_text.split(" ", maxsplit=1)
 
-            Server.INSTANCE.add_to_db += address_list
+        found = False
+        for index, item in enumerate(Server.INSTANCE.active_addresses):
+            if item[0] == client_address:
+                popped_item = Server.INSTANCE.active_addresses.pop(index)
+                found = True
+        # return if the client address wasn't found
+        if not found:
+            return False
 
-            self.send_text("200 OK")
-            return True
-        return False
+        # try parsing the string to a list
+        try:
+            addresses = addresses.replace("'", '"')
+            address_list = json.loads(addresses)
+        # return if the parsing failed
+        except json.decoder.JSONDecodeError:
+            Server.INSTANCE.active_addresses.append(popped_item)
+            return False
+
+        Server.INSTANCE.add_to_db += address_list
+        self.send_text("200 OK")
+        return True
 
     def send_text(self, text: str):
         """Send string to the given socket"""
