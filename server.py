@@ -45,12 +45,12 @@ class Server():
 
         # create the cache file if it doesn't exist
         with self._lock:
-            if not Path("pingserver/address_cache.txt").is_file():
-                with open("pingserver/address_cache.txt", "w", encoding="utf8") as file:
+            if not Path("address_cache.txt").is_file():
+                with open("address_cache.txt", "w", encoding="utf8") as file:
                     file.write("1.1.0.0")
 
         with self._lock:
-            with open("pingserver/address_cache.txt", "r+", encoding="utf8") as file:
+            with open("address_cache.txt", "r+", encoding="utf8") as file:
                 lines = file.readlines()
 
         # if only one address is in the file, take it and increment the saved address
@@ -70,7 +70,7 @@ class Server():
 
         # save the new address list
         with self._lock:
-            with open("pingserver/address_cache.txt", "w+", encoding="utf8") as file:
+            with open("address_cache.txt", "w+", encoding="utf8") as file:
                 file.writelines(lines)
 
         return last_address
@@ -109,7 +109,7 @@ class Server():
                 print(f"{BColors.WARNING}Timeout for client " +
                         f"{self.active_addresses[counter][0]}!{BColors.ENDC}")
                 with self._lock:
-                    with open("pingserver/address_cache.txt", "a", encoding="utf8") as file:
+                    with open("address_cache.txt", "a", encoding="utf8") as file:
                         file.write("\n" + self.active_addresses.pop(counter)[0])
                 counter -= 1
             counter += 1
@@ -121,7 +121,10 @@ class Server():
 
         addr = last_address.split(".")
         if int(addr[1]) + 1 > 255:
-            last_address = f"{int(addr[0]) + 1}.1.0.0"
+            if int(addr[0]) + 1 > 255:
+                last_address = "1.1.0.0"
+            else:
+                last_address = f"{int(addr[0]) + 1}.1.0.0"
         else:
             last_address = f"{addr[0]}.{int(addr[1]) + 1}.0.0"
         return last_address
