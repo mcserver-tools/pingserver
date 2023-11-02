@@ -8,7 +8,7 @@ class DBManager():
     """Class that manages the database"""
 
     def __init__(self):
-        db_connection = sqlalchemy.create_engine("sqlite:///pingserver/addresses.db",
+        db_connection = sqlalchemy.create_engine("sqlite:///addresses.sqlite",
                                                     connect_args={'check_same_thread': False})
         Base.metadata.create_all(db_connection)
 
